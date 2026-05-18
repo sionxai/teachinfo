@@ -66,21 +66,35 @@ def run_and_export():
             seen_keys.add(dedup)
         unique.append(j)
 
-    # ── 품질 필터: 2026년 자료만 + 마감일 있는 것만 ──
+    # ── 품질 필터 ──
     import re as _re
     before_filter = len(unique)
     filtered: list[JobPosting] = []
     removed_old = 0
     removed_no_deadline = 0
+    removed_not_teacher = 0
+
+    # 제목에 이 중 하나라도 있어야 강사 관련 공고로 인정
+    TEACHER_TITLE_KW = [
+        "강사", "멘토", "코치", "튜터", "교관",
+        "특강", "강의", "교원", "교사",
+        "방과후", "늘봄", "지도사",
+    ]
 
     for j in unique:
-        # 1) 제목에 2025년 이하 연도가 있으면 제거
+        # 1) 제목에 강사 관련 키워드가 하나도 없으면 제거
+        #    (SNS 마케터, 경영지원 사무보조, 개발자 등 걸러냄)
+        if not any(kw in j.title for kw in TEACHER_TITLE_KW):
+            removed_not_teacher += 1
+            continue
+
+        # 2) 제목에 2025년 이하 연도가 있으면 제거
         old_years = _re.findall(r"20(?:1[0-9]|2[0-5])", j.title)
         if old_years:
             removed_old += 1
             continue
 
-        # 2) 마감일 없는 공고 제거 (상시채용은 유지)
+        # 3) 마감일 없는 공고 제거 (상시채용은 유지)
         has_deadline = bool(j.deadline_text and j.deadline_text.strip())
         if not has_deadline:
             removed_no_deadline += 1
@@ -90,6 +104,7 @@ def run_and_export():
 
     unique = filtered
     print(f"\n🗑️  필터링: {before_filter}건 → {len(unique)}건")
+    print(f"    강사무관 제거: {removed_not_teacher}건")
     print(f"    옛날자료 제거: {removed_old}건")
     print(f"    마감일없음 제거: {removed_no_deadline}건")
 
