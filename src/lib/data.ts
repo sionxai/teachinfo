@@ -12,7 +12,30 @@ const allJobs: Job[] = (jobsRaw as unknown as Job[]).map((j) => ({
 }));
 
 export function getJobs(): Job[] {
-  return allJobs.filter((j) => j.status === "active");
+  const today = new Date().toISOString().slice(0, 10);
+
+  return allJobs
+    .filter((j) => j.status === "active")
+    .sort((a, b) => {
+      const dlA = a.deadlineText?.slice(0, 10) ?? "";
+      const dlB = b.deadlineText?.slice(0, 10) ?? "";
+      const isDateA = /^\d{4}-\d{2}-\d{2}$/.test(dlA);
+      const isDateB = /^\d{4}-\d{2}-\d{2}$/.test(dlB);
+
+      // 마감일 없는 공고는 뒤로
+      if (isDateA && !isDateB) return -1;
+      if (!isDateA && isDateB) return 1;
+      if (!isDateA && !isDateB) return 0;
+
+      // 이미 마감된 공고는 뒤로
+      const expiredA = dlA < today;
+      const expiredB = dlB < today;
+      if (!expiredA && expiredB) return -1;
+      if (expiredA && !expiredB) return 1;
+
+      // 마감임박순 (가까운 날짜 먼저)
+      return dlA.localeCompare(dlB);
+    });
 }
 
 export function getJobById(id: string): Job | null {

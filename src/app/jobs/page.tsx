@@ -147,11 +147,12 @@ export default function JobsPage() {
             <SelectTrigger><SelectValue placeholder="기관유형" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">기관유형 전체</SelectItem>
-              <SelectItem value="government">관공서</SelectItem>
+              <SelectItem value="school">학교·교육청</SelectItem>
+              <SelectItem value="government">관공서·정부</SelectItem>
               <SelectItem value="quasi_gov">준관공서</SelectItem>
+              <SelectItem value="public_institution">공공기관</SelectItem>
               <SelectItem value="university">대학교</SelectItem>
               <SelectItem value="corporate">기업</SelectItem>
-              <SelectItem value="other">기타</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={resetFilters}>초기화</Button>
