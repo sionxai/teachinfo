@@ -1,0 +1,10 @@
+.env*.local
+.next
+node_modules
+out
+dist
+*.log
+firebase-debug.log
+.DS_Store
+__pycache__/
+*.pyc
