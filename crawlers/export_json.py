@@ -10,6 +10,7 @@ from sources.jobkorea import crawl_jobkorea, KEYWORDS as J_KW
 from sources.public_gov import crawl_alio, crawl_seoul_job, crawl_g2b, crawl_naver_web_gov, reclassify_org_type
 from sources.worknet import crawl_worknet, KEYWORDS as W_KW
 from sources.gojobs import crawl_gojobs, KEYWORDS as G_KW
+from sources.edu_office import crawl_all_edu_offices
 
 
 def run_and_export():
@@ -32,6 +33,9 @@ def run_and_export():
     for kw in G_KW:
         all_jobs.extend(crawl_gojobs(kw, pages=3))
         _time.sleep(0.5)
+
+    print("\n📡 시도교육청 공지사항/채용 크롤링...")
+    all_jobs.extend(crawl_all_edu_offices(pages=3))
 
     print("\n📡 관공서·준관공서 크롤링...")
     # ── 아래 3개 소스 비활성화: API 마이그레이션 전까지 사용 중단 ──
