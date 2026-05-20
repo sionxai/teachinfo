@@ -1,26 +1,26 @@
 {
-  "totalJobs": 469,
+  "totalJobs": 464,
   "categories": {
+    "교육·강의기법": 272,
     "어학": 36,
     "기타": 43,
-    "교육·강의기법": 273,
-    "건강·복지": 39,
+    "건강·복지": 38,
     "경영·마케팅": 3,
     "재무·회계": 4,
-    "IT·프로그래밍": 20,
+    "IT·프로그래밍": 19,
     "문화·예술": 15,
     "창업·취업": 16,
-    "법률·행정": 20
+    "법률·행정": 18
   },
   "orgTypes": {
-    "corporate": 98,
+    "corporate": 97,
     "quasi_gov": 18,
-    "government": 40,
-    "school": 311,
+    "government": 37,
+    "school": 310,
     "public_institution": 1,
     "university": 1
   },
-  "lastUpdated": "2026-05-20T10:24:42.316530",
+  "lastUpdated": "2026-05-20T11:42:36.567851",
   "sources": [
     "경기교육청",
     "나라일터",

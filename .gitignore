@@ -9,3 +9,5 @@ firebase-debug.log
 __pycache__/
 *.pyc
 .vercel
+backups/
+logs/
