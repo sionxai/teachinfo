@@ -537,6 +537,103 @@ def crawl_dge(pages: int = 3) -> list[JobPosting]:
 
 
 # ─────────────────────────────────────────────
+# 6. 제주특별자치도교육청 (JJE) — RFC3 기반 CMS (eGovFrame 아님)
+# ─────────────────────────────────────────────
+def crawl_jje(pages: int = 3) -> list[JobPosting]:
+    """제주교육청 채용정보 게시판에서 강사 관련 공고 수집
+    제주는 eGovFrame이 아닌 RFC3 기반 CMS를 사용하므로 별도 파싱 로직 필요"""
+    results = []
+    base_url = "https://www.jje.go.kr/board/list.jje"
+    board_id = "BBS_0000507"
+    menu_cd = "DOM_000000103003009000"
+
+    for page in range(1, pages + 1):
+        params = {
+            "boardId": board_id,
+            "menuCd": menu_cd,
+            "startPage": str(page),
+            "listRow": "20",
+            "orderBy": "REGISTER_DATE DESC",
+            "paging": "ok",
+        }
+        try:
+            resp = httpx.get(base_url, params=params, headers=HEADERS, timeout=15, follow_redirects=True)
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"  제주교육청 p{page} 오류: {e}")
+            break
+
+        soup = BeautifulSoup(resp.text, "lxml")
+        rows = soup.select("div.board-list table.list01 tbody tr")
+        if not rows:
+            rows = soup.select("table.list01 tbody tr")
+        if not rows:
+            break
+
+        page_count = 0
+        for row in rows:
+            tds = row.select("td")
+            if len(tds) < 5:
+                continue
+
+            # 제목 (index 1, class="title")
+            title_td = row.select_one("td.title")
+            if not title_td:
+                continue
+            link = title_td.select_one("a")
+            if not link:
+                continue
+
+            title = link.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            if not _is_teacher_post(title):
+                continue
+            if _is_excluded(title):
+                continue
+
+            # 상세 URL
+            href = link.get("href", "")
+            detail_url = f"https://www.jje.go.kr{href}" if href.startswith("/") else href
+
+            # 학교(부서)명 (index 2)
+            org_name = tds[2].get_text(strip=True) if len(tds) > 2 else "제주특별자치도교육청"
+
+            # 작성일 (index 3)
+            posted_date = tds[3].get_text(strip=True) if len(tds) > 3 else ""
+
+            # 접수마감 (index 4) — 이미 YYYY-MM-DD 형식
+            deadline = ""
+            if len(tds) > 4:
+                dl_text = tds[4].get_text(strip=True)
+                dl_match = re.search(r"(\d{4})-(\d{2})-(\d{2})", dl_text)
+                if dl_match:
+                    deadline = f"{dl_match.group(1)}-{dl_match.group(2)}-{dl_match.group(3)}"
+
+            job = JobPosting(
+                title=title,
+                organization=org_name or "제주특별자치도교육청",
+                org_type="school" if "학교" in (org_name or "") else "government",
+                org_sub_type="학교" if "학교" in (org_name or "") else "교육청",
+                region="제주",
+                deadline_text=deadline or posted_date,
+                published_at=posted_date,
+                source_url=detail_url,
+                source_name="제주교육청",
+                apply_url=detail_url,
+            )
+            results.append(job)
+            page_count += 1
+
+        print(f"  제주교육청 p{page}: {page_count}건")
+        if len(rows) < 10:
+            break
+        time.sleep(2)
+
+    return results
+
+
+# ─────────────────────────────────────────────
 # 통합 실행
 # ─────────────────────────────────────────────
 def crawl_all_edu_offices(pages: int = 3) -> list[JobPosting]:
@@ -557,6 +654,9 @@ def crawl_all_edu_offices(pages: int = 3) -> list[JobPosting]:
 
     print("  → 대구교육청...")
     all_jobs.extend(crawl_dge(pages))
+
+    print("  → 제주교육청...")
+    all_jobs.extend(crawl_jje(pages))
 
     return all_jobs
 
