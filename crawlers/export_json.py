@@ -69,11 +69,16 @@ def run_and_export():
 
     # ── 품질 필터 ──
     import re as _re
+    from datetime import datetime as _dt
+
+    today_str = _dt.now().strftime("%Y-%m-%d")
+
     before_filter = len(unique)
     filtered: list[JobPosting] = []
     removed_old = 0
     removed_no_deadline = 0
     removed_not_teacher = 0
+    removed_expired = 0
 
     # 제목에 이 중 하나라도 있어야 강사 관련 공고로 인정
     TEACHER_TITLE_KW = [
@@ -101,6 +106,16 @@ def run_and_export():
             removed_no_deadline += 1
             continue
 
+        # 4) 마감일 지난 공고 제거
+        dl = j.deadline_text.strip()[:10]
+        if len(dl) == 10 and dl[4:5] == "-":
+            try:
+                if dl < today_str:
+                    removed_expired += 1
+                    continue
+            except Exception:
+                pass
+
         filtered.append(j)
 
     unique = filtered
@@ -108,6 +123,7 @@ def run_and_export():
     print(f"    강사무관 제거: {removed_not_teacher}건")
     print(f"    옛날자료 제거: {removed_old}건")
     print(f"    마감일없음 제거: {removed_no_deadline}건")
+    print(f"    마감만료 제거: {removed_expired}건")
 
     # 기관유형별 통계
     org_counts: dict[str, int] = {}
