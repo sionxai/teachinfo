@@ -21,56 +21,201 @@ def is_teacher_post(title: str) -> bool:
 
 
 # ─────────────────────────────────────────────
-# 1. 잡알리오 (공공기관 채용 포털)
+# 1. 잡알리오 (공공기관 채용정보 통합 포털)
+#    복지관, 청소년센터, 문화재단, 평생교육원 등 전 분야 공공기관 채용 집약
 # ─────────────────────────────────────────────
-def crawl_alio() -> list[JobPosting]:
-    """잡알리오 — 공공기관 채용정보 (강사 키워드)"""
-    results = []
-    url = "https://job.alio.go.kr/recruit/search.do"
+ALIO_KEYWORDS = ["강사", "멘토", "코치", "튜터", "교관", "특강"]
 
-    for keyword in ["강사", "교육강사"]:
+QUASI_GOV_ORG_KW = [
+    "센터", "재단", "진흥원", "진흥", "도서관", "복지관", "문화원",
+    "평생교육", "평생학습", "청소년", "수련", "여성", "청년",
+    "협회", "연구원", "공사", "공단",
+]
+
+def _classify_alio_org(org_name: str) -> tuple[str, str]:
+    """잡알리오 기관명에서 orgType/orgSubType 분류"""
+    if any(kw in org_name for kw in ["대학교", "대학"]):
+        return "university", "대학교"
+    if any(kw in org_name for kw in ["교육청", "시청", "구청", "군청", "도청", "국립"]):
+        return "government", "관공서"
+    if any(kw in org_name for kw in QUASI_GOV_ORG_KW):
+        for kw in QUASI_GOV_ORG_KW:
+            if kw in org_name:
+                return "quasi_gov", kw
+    return "public_institution", "공공기관"
+
+
+def crawl_alio(pages: int = 3) -> list[JobPosting]:
+    """잡알리오 — 공공기관 채용정보 (강사/교육/멘토 키워드)
+    table.tbl.type_03: 번호, 채용제목, 기관명, 근무지, 고용형태, 등록일, 마감일, 상태"""
+    results = []
+    url = "https://job.alio.go.kr/recruit.do"
+
+    for keyword in ALIO_KEYWORDS:
+        for page in range(1, pages + 1):
+            params = {"keyword": keyword, "search_type": "title", "pageNo": str(page)}
+            try:
+                resp = httpx.get(url, params=params, headers=HEADERS, timeout=15, follow_redirects=True)
+                resp.raise_for_status()
+            except Exception as e:
+                print(f"  잡알리오 '{keyword}' p{page} 오류: {e}")
+                break
+
+            soup = BeautifulSoup(resp.text, "lxml")
+            rows = soup.select("table.type_03 tbody tr")
+            if not rows:
+                break
+
+            page_count = 0
+            for row in rows:
+                tds = row.select("td")
+                if len(tds) < 8:
+                    continue
+
+                # td[2]: 채용제목 + link
+                link = tds[2].select_one("a")
+                if not link:
+                    continue
+                title = link.get_text(strip=True)
+                if not title or len(title) < 5:
+                    continue
+                # 키워드 검색이 이미 제목 필터 역할 → is_teacher_post 중복 체크 불필요
+
+                href = link.get("href", "")
+                detail_url = f"https://job.alio.go.kr{href}" if href.startswith("/") else href
+
+                # td[3]: 기관명
+                org_name = tds[3].get_text(strip=True)
+                # td[4]: 근무지
+                region_text = tds[4].get_text(strip=True)
+                region = ""
+                for r in ["서울", "경기", "인천", "부산", "대구", "광주", "대전", "세종",
+                           "울산", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]:
+                    if r in region_text:
+                        region = r
+                        break
+
+                # td[6]: 등록일 (2026.05.22)
+                posted_date = tds[6].get_text(strip=True).strip()
+                # td[7]: 마감일 (26.06.08D-13)
+                deadline_raw = tds[7].get_text(strip=True).strip()
+                # "26.06.08D-13" → "2026-06-08"
+                deadline = ""
+                dl_match = re.search(r"(\d{2,4})[.](\d{2})[.](\d{2})", deadline_raw)
+                if dl_match:
+                    y, m, d = dl_match.groups()
+                    if len(y) == 2:
+                        y = f"20{y}"
+                    deadline = f"{y}-{m}-{d}"
+
+                org_type, org_sub = _classify_alio_org(org_name)
+
+                results.append(JobPosting(
+                    title=title, organization=org_name,
+                    org_type=org_type, org_sub_type=org_sub,
+                    region=region,
+                    deadline_text=deadline or deadline_raw,
+                    published_at=posted_date,
+                    source_url=detail_url,
+                    source_name="잡알리오",
+                    apply_url=detail_url,
+                ))
+                page_count += 1
+
+            print(f"  잡알리오 '{keyword}' p{page}: {page_count}건")
+            if len(rows) < 10:
+                break
+            time.sleep(1)
+
+    return results
+
+
+# ─────────────────────────────────────────────
+# 1-2. 한국청소년활동진흥원 (kywa.or.kr) — 청소년센터/수련관 채용
+# ─────────────────────────────────────────────
+def crawl_kywa(pages: int = 3) -> list[JobPosting]:
+    """한국청소년활동진흥원 채용공고 — 청소년수련관/센터 강사·교관 채용 집약
+    table.t-type02: 번호, 제목, 작성자, 작성일, 조회수"""
+    results = []
+    base_url = "https://kywa.or.kr/about/about05_5.jsp"
+
+    for page in range(1, pages + 1):
         params = {
-            "query": keyword,
-            "tabId": "all",
-            "order": "REG_DT",
-            "direction": "DESC",
-            "pageIndex": 1,
-            "recordCountPerPage": 20,
+            "bgubun": "",
+            "cate": "C3A4BFEB",
+            "currPage": str(page),
+            "searchText": "",
+            "searchColumn": "",
         }
         try:
-            resp = httpx.get(url, params=params, headers=HEADERS, timeout=15, follow_redirects=True)
+            resp = httpx.get(base_url, params=params, headers=HEADERS, timeout=15, follow_redirects=True)
             resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "lxml")
-
-            rows = soup.select("table tbody tr, .list_item, .recruit-list li")
-            for row in rows:
-                links = row.select("a")
-                for link in links:
-                    title = link.get_text(strip=True)
-                    if not title or len(title) < 5 or not is_teacher_post(title):
-                        continue
-                    href = link.get("href", "")
-                    full_url = f"https://job.alio.go.kr{href}" if href.startswith("/") else href
-
-                    cells = row.select("td, span, .info")
-                    org = cells[0].get_text(strip=True) if cells else ""
-                    deadline = ""
-                    for c in cells:
-                        t = c.get_text(strip=True)
-                        if re.search(r"\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}", t):
-                            deadline = t
-                            break
-
-                    results.append(JobPosting(
-                        title=title, organization=org,
-                        org_type="government", org_sub_type="공공기관",
-                        deadline_text=deadline, source_url=full_url,
-                        source_name="잡알리오", apply_url=full_url,
-                    ))
-
-            print(f"  잡알리오 '{keyword}': {len(results)}건")
+            # EUC-KR 인코딩 처리
+            try:
+                text = resp.content.decode("euc-kr")
+            except UnicodeDecodeError:
+                text = resp.text
         except Exception as e:
-            print(f"  잡알리오 '{keyword}' 오류: {e}")
+            print(f"  청소년활동진흥원 p{page} 오류: {e}")
+            break
+
+        soup = BeautifulSoup(text, "lxml")
+        rows = soup.select("table.t-type02 tbody tr, table.t-type02 tr")
+        # 첫 행이 헤더면 건너뛰기
+        if rows and rows[0].select("th"):
+            rows = rows[1:]
+        if not rows:
+            break
+
+        page_count = 0
+        for row in rows:
+            tds = row.select("td")
+            if len(tds) < 4:
+                continue
+
+            # td[1]: 제목 + link
+            link = tds[1].select_one("a") if len(tds) > 1 else None
+            if not link:
+                continue
+            title = link.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+            # 청소년활동진흥원 채용 게시판은 산하기관 전체 채용 → 넓게 수집
+            # (export_json.py의 TEACHER_TITLE_KW 필터가 최종 걸러냄)
+
+            href = link.get("href", "")
+            if href and not href.startswith("http"):
+                detail_url = f"https://kywa.or.kr/about/{href}"
+            else:
+                detail_url = href
+
+            # td[2]: 작성자, td[3]: 작성일
+            writer = tds[2].get_text(strip=True) if len(tds) > 2 else ""
+            posted_date = tds[3].get_text(strip=True) if len(tds) > 3 else ""
+
+            # 마감일은 제목에서 추출 시도
+            deadline = ""
+            dl_match = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", title)
+            if dl_match:
+                deadline = f"{dl_match.group(1)}-{dl_match.group(2).zfill(2)}-{dl_match.group(3).zfill(2)}"
+
+            results.append(JobPosting(
+                title=title,
+                organization=writer or "한국청소년활동진흥원",
+                org_type="quasi_gov",
+                org_sub_type="청소년센터",
+                deadline_text=deadline or posted_date,
+                published_at=posted_date,
+                source_url=detail_url,
+                source_name="청소년활동진흥원",
+                apply_url=detail_url,
+            ))
+            page_count += 1
+
+        print(f"  청소년활동진흥원 p{page}: {page_count}건")
+        if len(rows) < 10:
+            break
+        time.sleep(1)
 
     return results
 
@@ -310,11 +455,19 @@ def crawl_naver_web_gov() -> list[JobPosting]:
                         region = r
                         break
 
+                # 제목에서 마감일 추출 시도
+                deadline = ""
+                dl_match = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", title)
+                if dl_match:
+                    deadline = f"{dl_match.group(1)}-{dl_match.group(2).zfill(2)}-{dl_match.group(3).zfill(2)}"
+
                 results.append(JobPosting(
                     title=title, organization="",
                     org_type=org_type, org_sub_type=org_sub,
                     region=region, source_url=href,
                     source_name="네이버 검색(공공)",
+                    deadline_text=deadline or "채용시까지",
+                    deadline_type="until_filled" if not deadline else "fixed",
                 ))
 
             print(f"  네이버웹 '{keyword}': 누적 {len(results)}건")

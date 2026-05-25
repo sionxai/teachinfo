@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models import JobPosting
 from sources.saramin import crawl_saramin, KEYWORDS as S_KW
 from sources.jobkorea import crawl_jobkorea, KEYWORDS as J_KW
-from sources.public_gov import crawl_alio, crawl_seoul_job, crawl_g2b, crawl_naver_web_gov, reclassify_org_type
+from sources.public_gov import crawl_alio, crawl_kywa, crawl_seoul_job, crawl_g2b, crawl_naver_web_gov, reclassify_org_type
 from sources.worknet import crawl_worknet, KEYWORDS as W_KW
 from sources.gojobs import crawl_gojobs, KEYWORDS as G_KW
 from sources.edu_office import crawl_all_edu_offices
@@ -38,17 +38,14 @@ def run_and_export():
     all_jobs.extend(crawl_all_edu_offices(pages=3))
 
     print("\n📡 관공서·준관공서 크롤링...")
-    # ── 아래 3개 소스 비활성화: API 마이그레이션 전까지 사용 중단 ──
-    # 잡알리오: 404 / connection reset 반복
-    # print("  → 잡알리오...")
-    # all_jobs.extend(crawl_alio())
-    # 서울시 일자리포털: 404 반복
-    # print("  → 서울시 일자리포털...")
+    print("  → 잡알리오 (공공기관 채용 통합)...")
+    all_jobs.extend(crawl_alio(pages=3))
+    print("  → 청소년활동진흥원...")
+    all_jobs.extend(crawl_kywa(pages=3))
+    # 서울시 일자리포털: 404 반복 — 비활성
     # all_jobs.extend(crawl_seoul_job())
-    # 나라장터: timeout 반복
-    # print("  → 나라장터...")
+    # 나라장터: timeout 반복 — 비활성
     # all_jobs.extend(crawl_g2b())
-    # ── 비활성화 끝 ──
     print("  → 네이버 웹검색 (관공서/준관공서)...")
     all_jobs.extend(crawl_naver_web_gov())
 

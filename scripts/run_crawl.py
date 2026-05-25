@@ -135,7 +135,7 @@ def crawl(run_id: str) -> tuple[int, float, Path]:
 # ────────────────────────────────────────────────
 # 4. Validate
 # ────────────────────────────────────────────────
-def validate(backup_dir: Path) -> tuple[str, list[str]]:
+def validate(backup_dir: Path, log_path: Path | None = None) -> tuple[str, list[str]]:
     """
     데이터 무결성 검증.
     Returns: (status, warnings)
@@ -185,12 +185,28 @@ def validate(backup_dir: Path) -> tuple[str, list[str]]:
         if prev_jobs and isinstance(prev_jobs, list):
             prev_src = _source_counts(prev_jobs)
             curr_src = _source_counts(jobs)
+
+            # 로그에서 "건너뜀" 표시된 소스 수집 (사이트 점검 등)
+            skipped_sources: set[str] = set()
+            if log_path.exists():
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        if "건너뜀" in line:
+                            for src_name in prev_src:
+                                if src_name.replace("교육청", "") in line:
+                                    skipped_sources.add(src_name)
+
             for src, prev_cnt in prev_src.items():
                 curr_cnt = curr_src.get(src, 0)
                 if prev_cnt >= 10 and curr_cnt == 0:
-                    warnings.append(
-                        f"소스 급감: {src} {prev_cnt}건 → 0건 (구조변경 가능성)"
-                    )
+                    if src in skipped_sources:
+                        warnings.append(
+                            f"소스 일시중단: {src} (사이트 점검/접속불가 — 건너뜀)"
+                        )
+                    else:
+                        warnings.append(
+                            f"소스 급감: {src} {prev_cnt}건 → 0건 (구조변경 가능성)"
+                        )
 
     stats = _load_json(PUB_STATS)
     if stats is None:
@@ -387,7 +403,7 @@ def main():
 
     # 4. Validate
     print("[4/6] 데이터 검증...")
-    status, warnings = validate(backup_dir)
+    status, warnings = validate(backup_dir, log_path)
     if status == "FAILED" and not dry_run:
         print(f"  [FAILED] 검증 실패 — 이전 데이터로 복원합니다")
         rollback(backup_dir)

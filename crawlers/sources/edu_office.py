@@ -430,11 +430,27 @@ def crawl_bse(pages: int = 3) -> list[JobPosting]:
 # ─────────────────────────────────────────────
 def crawl_dge(pages: int = 3) -> list[JobPosting]:
     """대구시교육청 기간제교사/강사 게시판에서 강사 관련 공고 수집
-    DGE는 SSO 인증이 필요해서 httpx.Client로 쿠키 체인을 유지해야 함"""
+    DGE는 SSO 인증이 필요해서 httpx.Client로 쿠키 체인을 유지해야 함
+
+    참고: 2026.05 기준 dge.go.kr 사이트 전면 점검 중 (404 반환).
+    사이트가 복구되면 mi/bbsId가 변경될 수 있으므로 확인 필요.
+    """
     results = []
     base_url = "https://www.dge.go.kr/main/na/ntt/selectNttList.do"
     mi = "5186"
     bbs_id = "1047"
+
+    # 사이트 가용성 사전 확인 — 전면 점검 시 빠르게 건너뛰기
+    try:
+        probe = httpx.get("https://www.dge.go.kr/", headers=HEADERS, timeout=10, follow_redirects=True)
+        content_type = probe.headers.get("content-type", "")
+        # 사이트가 이미지(공지)만 반환하거나 HTML이 아닌 경우 → 점검 중
+        if "image" in content_type or (probe.status_code == 200 and "text/html" not in content_type):
+            print("  대구교육청: 사이트 점검 중 (이미지만 반환) — 건너뜀")
+            return results
+    except Exception as e:
+        print(f"  대구교육청: 사이트 접속 불가 ({e}) — 건너뜀")
+        return results
 
     # SSO 세션 확보용 Client
     client = httpx.Client(headers=HEADERS, follow_redirects=True, timeout=30)
@@ -443,6 +459,9 @@ def crawl_dge(pages: int = 3) -> list[JobPosting]:
         # SSO 체인 워밍업: 첫 요청으로 세션 쿠키 확보
         try:
             warmup = client.get(base_url, params={"mi": mi, "bbsId": bbs_id, "currPage": "1"})
+            if warmup.status_code == 404:
+                print("  대구교육청: 게시판 URL 변경됨 (404) — 건너뜀")
+                return results
             # JS redirect가 있으면 /sso/index.jsp 로 수동 이동
             if "sso" in warmup.text.lower() or warmup.status_code != 200:
                 sso_url = "https://www.dge.go.kr/sso/index.jsp"
@@ -450,7 +469,8 @@ def crawl_dge(pages: int = 3) -> list[JobPosting]:
                 # SSO 완료 후 다시 본 페이지 요청
                 warmup = client.get(base_url, params={"mi": mi, "bbsId": bbs_id, "currPage": "1"})
         except Exception as e:
-            print(f"  대구교육청 SSO 초기화 오류: {e}")
+            print(f"  대구교육청 SSO 초기화 오류: {e} — 건너뜀")
+            return results
 
         for page in range(1, pages + 1):
             params = {"mi": mi, "bbsId": bbs_id, "currPage": str(page)}
