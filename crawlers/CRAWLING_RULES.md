@@ -13,13 +13,13 @@
 | 1 | 공공기관 채용정보 (Job-Alio) | 공공데이터 API (data.go.kr) | TODO | 접수기간, 직무, 첨부파일 메타 |
 | 1 | 나라일터 (gojobs.go.kr) | 공식 게시판 크롤링 | ✅ DONE | 21키워드 x 3p, 기관유형 자동분류 |
 | 1 | 시도교육청 (6곳) | 공식 게시판 크롤링 | ✅ DONE | 서울/경기/인천/부산/대구/제주. 대구는 사이트 점검 시 자동 건너뜀. 나머지 11곳 TODO |
-| 1 | 잡알리오 (job.alio.go.kr) | HTML 크롤링 | ✅ DONE | 공공기관 채용 통합 포털. 6키워드 x 3p. 복지관·청소년센터·문화재단 등 준관공서 핵심 |
+| 1 | 잡알리오 (job.alio.go.kr) | HTML 크롤링 | ✅ DONE | 공공기관 채용 통합 포털. 8키워드 x 3p (영상/미디어 포함). 복지관·청소년센터·문화재단 등 준관공서 핵심 |
 | 1 | 청소년활동진흥원 (kywa.or.kr) | HTML 크롤링 | ✅ DONE | 청소년수련관/센터 채용 집약. 3p |
 | 2 | 나라장터 | OpenAPI (data.go.kr) | TODO | 교육용역/위탁교육/멘토링 사업 |
-| 2 | 네이버 웹검색 | HTML 크롤링 | ✅ DONE | 17키워드. 준관공서 공고 탐색 보조. API 전환 권장 |
-| 3 | Saramin | HTML 크롤링 | OK | 보조 소스 |
-| 3 | JobKorea | HTML 크롤링 | OK | 보조 소스 |
-| 3 | Worknet (HTML) | HTML 크롤링 | OK | API 전환 전 임시 |
+| 2 | 네이버 웹검색 | HTML 크롤링 | ✅ DONE | 21키워드 (영상/미디어 4개 포함). 준관공서 공고 탐색 보조. API 전환 권장 |
+| 3 | Saramin | HTML 크롤링 | OK | 16키워드 (영상/미디어 5개). 보조 소스 |
+| 3 | JobKorea | HTML 크롤링 | OK | 15키워드 (영상/미디어 5개). 보조 소스 |
+| 3 | Worknet (HTML) | HTML 크롤링 | OK | 9키워드 (영상/미디어 2개). API 전환 전 임시 |
 
 ### Principle
 - 공식 API > 공식 게시판 > 검색엔진 순서
@@ -181,10 +181,10 @@
 ## 11. Implementation Status
 
 ### Phase 1 (Current MVP)
-- [x] Saramin HTML crawler (11 keywords)
-- [x] JobKorea HTML crawler (10 keywords)
-- [x] Worknet HTML crawler (7 keywords x 2 pages)
-- [x] Naver web search (17 keywords, 2s delay)
+- [x] Saramin HTML crawler (16 keywords, 영상/미디어 5개 포함)
+- [x] JobKorea HTML crawler (15 keywords, 영상/미디어 5개 포함)
+- [x] Worknet HTML crawler (9 keywords x 2 pages, 영상/미디어 2개 포함)
+- [x] Naver web search (21 keywords, 영상/미디어 4개 포함, 2s delay)
 - [x] Quality filter (old year removal + deadline required)
 - [x] Auto category classification (12 categories, school subjects included)
 - [x] Org type reclassification (school/government/quasi_gov 분리)

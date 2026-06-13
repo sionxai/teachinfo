@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import re
 import time
+import concurrent.futures
 import httpx
 from bs4 import BeautifulSoup
 from models import JobPosting
@@ -24,7 +25,7 @@ def is_teacher_post(title: str) -> bool:
 # 1. 잡알리오 (공공기관 채용정보 통합 포털)
 #    복지관, 청소년센터, 문화재단, 평생교육원 등 전 분야 공공기관 채용 집약
 # ─────────────────────────────────────────────
-ALIO_KEYWORDS = ["강사", "멘토", "코치", "튜터", "교관", "특강"]
+ALIO_KEYWORDS = ["강사", "멘토", "코치", "튜터", "교관", "특강", "영상", "미디어"]
 
 QUASI_GOV_ORG_KW = [
     "센터", "재단", "진흥원", "진흥", "도서관", "복지관", "문화원",
@@ -374,6 +375,96 @@ def reclassify_org_type(jobs: list[JobPosting]) -> list[JobPosting]:
 # ─────────────────────────────────────────────
 # 5. 네이버 검색 — 관공서/준관공서 강사 공고 (웹 검색)
 # ─────────────────────────────────────────────
+
+# 본문 날짜 패턴: 2026.4.24 / 2026-04-24 / 2026년 4월 24일 / 2026. 4. 24.
+_DATE_PAT = re.compile(r"(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})")
+
+
+def _extract_deadline_from_page(url: str) -> str:
+    """상세 페이지 본문에서 접수 마감일(ISO yyyy-mm-dd)을 추출한다.
+
+    '까지/~/마감/접수/종료' 같은 마감 신호가 붙은 날짜만 채택한다.
+    명확한 신호가 없으면 빈 문자열을 반환해 호출부가 '채용시까지'를 유지하게 한다.
+    이렇게 해야 뉴스 본문의 무관한 날짜(게재일 등)를 마감일로 오인하지 않는다.
+    """
+    if not url or not url.startswith("http"):
+        return ""
+    try:
+        resp = httpx.get(url, headers=HEADERS, timeout=6, follow_redirects=True)
+    except Exception:
+        return ""
+    if resp.status_code != 200 or "html" not in resp.headers.get("content-type", ""):
+        return ""
+
+    try:
+        soup = BeautifulSoup(resp.text, "lxml")
+        text = soup.get_text(" ", strip=True)
+    except Exception:
+        return ""
+
+    candidates: list[tuple[int, str]] = []
+    for m in _DATE_PAT.finditer(text):
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if not (2024 <= y <= 2027 and 1 <= mo <= 12 and 1 <= d <= 31):
+            continue
+        iso = f"{y:04d}-{mo:02d}-{d:02d}"
+        before = text[max(0, m.start() - 30):m.start()]
+        after = text[m.end():m.end() + 10]
+        near = "~" in before[-8:] or "∼" in before[-8:]  # 날짜 직전 범위기호 = 종료일
+        # 마감 신호 강도로 점수화 — '접수/모집기간' 레이블이 가장 확실
+        if any(k in before for k in ["접수", "모집기간", "신청기간", "지원기간", "접수기간"]):
+            score = 5 if near else 4  # 종료일(~ 뒤)이면 가점
+        elif "까지" in after:
+            score = 3
+        elif near:
+            score = 2
+        elif any(k in (before + after) for k in ["마감", "종료"]):
+            score = 1
+        else:
+            score = 0  # 무관한 날짜 — 채택하지 않음
+        if score > 0:
+            candidates.append((score, iso))
+
+    if not candidates:
+        return ""
+    # 점수 높은 것 우선, 동점이면 가장 늦은 날짜(=접수 종료일)
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return candidates[0][1]
+
+
+def _enrich_naver_deadlines(results: list[JobPosting]) -> None:
+    """마감일을 못 잡은 네이버 결과의 원문을 병렬 방문해 마감일을 보강한다.
+
+    추출된 날짜가 과거면 export_json.py의 마감만료 필터가 자동 제거한다.
+    중복 URL은 한 번만 요청한다.
+    """
+    need: dict[str, str] = {}
+    for j in results:
+        if j.deadline_type == "until_filled" and j.source_url.startswith("http"):
+            need.setdefault(j.source_url, "")
+    if not need:
+        return
+
+    print(f"  네이버웹: 상세 마감일 추출 {len(need)}건...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+        futs = {ex.submit(_extract_deadline_from_page, u): u for u in need}
+        for fut in concurrent.futures.as_completed(futs):
+            u = futs[fut]
+            try:
+                need[u] = fut.result()
+            except Exception:
+                need[u] = ""
+
+    applied = 0
+    for j in results:
+        dl = need.get(j.source_url)
+        if dl:
+            j.deadline_text = dl
+            j.deadline_type = "fixed"
+            applied += 1
+    print(f"  네이버웹: 마감일 추출 성공 {applied}건 (나머지는 '채용시까지' 유지)")
+
+
 def crawl_naver_web_gov() -> list[JobPosting]:
     """네이버 웹 검색으로 관공서/준관공서 강사 공고 수집"""
     results = []
@@ -400,6 +491,18 @@ def crawl_naver_web_gov() -> list[JobPosting]:
         "동기부여 강사 채용",
         "멘탈코칭 강사 모집",
         "리더십 강사 모집 공고",
+        # 영상/미디어
+        "시청자미디어센터 강사 모집",
+        "미디어교육 강사 모집",
+        "영상제작 강사 채용",
+        "유튜브 강사 모집 공고",
+        # AI/디지털
+        "AI 강사 모집",
+        "인공지능 교육 강사 채용",
+        "디지털 강사 모집 공고",
+        "코딩 강사 모집",
+        "소프트웨어 교육 강사 채용",
+        "제주 AI 디지털 강사 모집",
     ]
 
     for keyword in keywords:
@@ -476,6 +579,9 @@ def crawl_naver_web_gov() -> list[JobPosting]:
 
         # 403 방지 딜레이
         time.sleep(2)
+
+    # 마감일 못 잡은 결과는 원문 방문해 접수 마감일 보강 (지난 건 후속 필터가 제거)
+    _enrich_naver_deadlines(results)
 
     return results
 
