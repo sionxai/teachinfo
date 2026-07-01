@@ -200,7 +200,7 @@
 
 ### Phase 2 (API Migration)
 - [ ] Worknet OpenAPI integration
-- [ ] 공공기관 채용정보 API (data.go.kr)
+- [x] 공공기관 채용정보 API (data.go.kr) — 전수조회+로컬필터, 401 시 HTML 폴백
 - [ ] 나라장터 입찰공고 API (data.go.kr)
 - [ ] Naver Search API migration
 - [x] 나라일터 게시판 크롤러 (18 keywords x 3 pages)
@@ -214,6 +214,7 @@
 - [x] Exclude keyword filter (합격자, 교장, 시설관리 등)
 
 ### Phase 4 (Quasi-Gov Direct)
+- [x] AI·디지털 교육 특화 소스 (sources/ai_edu.py): SW미래채움·디지털배움터·시청자미디어재단·제주평생교육장학진흥원·제주콘텐츠진흥원
 - [ ] 주요 청년센터 게시판 크롤러
 - [ ] 평생학습관/도서관 게시판 크롤러
 - [ ] 복지관/문화센터 게시판 크롤러
