@@ -13,8 +13,14 @@
 | 1 | 공공기관 채용정보 (Job-Alio) | 공공데이터 API (data.go.kr) | TODO | 접수기간, 직무, 첨부파일 메타 |
 | 1 | 나라일터 (gojobs.go.kr) | 공식 게시판 크롤링 | ✅ DONE | 21키워드 x 3p, 기관유형 자동분류 |
 | 1 | 시도교육청 (6곳) | 공식 게시판 크롤링 | ✅ DONE | 서울/경기/인천/부산/대구/제주. 대구는 사이트 점검 시 자동 건너뜀. 나머지 11곳 TODO |
-| 1 | 잡알리오 (job.alio.go.kr) | HTML 크롤링 | ✅ DONE | 공공기관 채용 통합 포털. 8키워드 x 3p (영상/미디어 포함). 복지관·청소년센터·문화재단 등 준관공서 핵심 |
+| 1 | 잡알리오 (data.go.kr API) | 공공데이터 API | ✅ DONE | 진행중 공공기관 공고 전수 조회(ongoingYn=Y) 후 로컬 키워드 필터. 401 시 HTML 크롤링 폴백. DATA_GO_KR_API_KEY 필요 |
 | 1 | 청소년활동진흥원 (kywa.or.kr) | HTML 크롤링 | ✅ DONE | 청소년수련관/센터 채용 집약. 3p |
+| 1 | SW미래채움 (sweduhub.or.kr) | JSON API | ✅ DONE | 13개 지역센터 SW·AI 강사 공고 통합. 제목 '강사' 서버검색. robots 전체 허용 |
+| 1 | 디지털배움터 (NIA) | JSON API | ✅ DONE | 전국 디지털역량교육 강사/튜터 모집 통합공고. x-nia-header/token 빈 헤더 필수 |
+| 1 | 시청자미디어재단 (kcmf.or.kr) | HTML 크롤링 | ✅ DONE | 미디어교육 강사(체험·보조·일반) 모집. 매년 1~3월 집중 |
+| 1 | 제주평생교육장학진흥원 (jiles.or.kr) | HTML 크롤링 | ✅ DONE | 매월 도민 강사 모집 + 평생교육 강사. 제목검색 qtype=title |
+| 1 | 제주콘텐츠진흥원 (ofjeju.kr) | HTML 크롤링 | ✅ DONE | 웹툰·미디어 강사풀 (연 1~3건). 공지 게시판 qType=title |
+| — | 제주테크노파크 (jejutp.or.kr) | — | ❌ 제외 | robots.txt Disallow: / (전체 금지) — robots 준수 원칙에 따라 크롤링 안 함 |
 | 2 | 나라장터 | OpenAPI (data.go.kr) | TODO | 교육용역/위탁교육/멘토링 사업 |
 | 2 | 네이버 웹검색 | HTML 크롤링 | ✅ DONE | 21키워드 (영상/미디어 4개 포함). 준관공서 공고 탐색 보조. API 전환 권장 |
 | 3 | Saramin | HTML 크롤링 | OK | 16키워드 (영상/미디어 5개). 보조 소스 |

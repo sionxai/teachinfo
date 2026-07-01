@@ -7,10 +7,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models import JobPosting
 from sources.saramin import crawl_saramin, KEYWORDS as S_KW
 from sources.jobkorea import crawl_jobkorea, KEYWORDS as J_KW
-from sources.public_gov import crawl_alio, crawl_kywa, crawl_seoul_job, crawl_g2b, crawl_naver_web_gov, reclassify_org_type
+from sources.public_gov import crawl_alio, crawl_alio_api, crawl_kywa, crawl_seoul_job, crawl_g2b, crawl_naver_web_gov, reclassify_org_type
 from sources.worknet import crawl_worknet, KEYWORDS as W_KW
 from sources.gojobs import crawl_gojobs, KEYWORDS as G_KW
 from sources.edu_office import crawl_all_edu_offices
+from sources.ai_edu import crawl_all_ai_edu
 
 
 def run_and_export():
@@ -39,9 +40,14 @@ def run_and_export():
 
     print("\n📡 관공서·준관공서 크롤링...")
     print("  → 잡알리오 (공공기관 채용 통합)...")
-    all_jobs.extend(crawl_alio(pages=3))
+    alio_jobs = crawl_alio_api()  # API 우선 (전수 조회 — '강사' 없는 제목도 포착)
+    if not alio_jobs:
+        alio_jobs = crawl_alio(pages=3)  # 키 없음/미반영 시 HTML 폴백
+    all_jobs.extend(alio_jobs)
     print("  → 청소년활동진흥원...")
     all_jobs.extend(crawl_kywa(pages=3))
+    print("\n📡 AI·디지털 교육 특화 소스 크롤링...")
+    all_jobs.extend(crawl_all_ai_edu())
     # 서울시 일자리포털: 404 반복 — 비활성
     # all_jobs.extend(crawl_seoul_job())
     # 나라장터: timeout 반복 — 비활성
@@ -87,10 +93,31 @@ def run_and_export():
         "방과후", "늘봄", "지도사",
     ]
 
+    # AI 예외: "AI 교육 운영인력"처럼 제목에 '강사'가 없는 AI 교육 공고 구제
+    # 분야 키워드 + 교육 키워드가 동시에 있어야 통과 (개발자 채용 등 오탐 방지)
+    AI_FIELD_KW = ["AI", "인공지능", "디지털", "코딩", "소프트웨어", "SW", "메타버스", "에듀테크"]
+    AI_EDU_KW = ["교육", "훈련", "배움터", "캠프", "교실", "부트캠프"]
+
+    def _is_teacher_title(title: str) -> bool:
+        if any(kw in title for kw in TEACHER_TITLE_KW):
+            return True
+        return any(a in title for a in AI_FIELD_KW) and any(b in title for b in AI_EDU_KW)
+
+    # 제외 키워드: 우연한 부분문자열 매칭 오탐 제거
+    # (예: "정신건강의학과"의 '강의', 합격자 발표문 등)
+    EXCLUDE_TITLE_KW = [
+        "의학과", "임상교수", "진료교수", "전문의", "간호사",
+        "합격자", "면접결과", "결과 발표",
+    ]
+
     for j in unique:
         # 1) 제목에 강사 관련 키워드가 하나도 없으면 제거
         #    (SNS 마케터, 경영지원 사무보조, 개발자 등 걸러냄)
-        if not any(kw in j.title for kw in TEACHER_TITLE_KW):
+        if not _is_teacher_title(j.title):
+            removed_not_teacher += 1
+            continue
+        # 1-1) 제외 키워드 (의료직 오탐, 합격자 발표문)
+        if any(kw in j.title for kw in EXCLUDE_TITLE_KW):
             removed_not_teacher += 1
             continue
 

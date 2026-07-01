@@ -132,6 +132,148 @@ def crawl_alio(pages: int = 3) -> list[JobPosting]:
 
 
 # ─────────────────────────────────────────────
+# 1-1. 공공기관 채용정보 API (data.go.kr) — 잡알리오 원본 DB
+#      제목 키워드 검색이 아니라 진행중 공고 전수 조회 후 로컬 필터
+#      → "강사" 없는 제목(디지털배움터 운영인력 등)도 포착 가능
+# ─────────────────────────────────────────────
+ALIO_API_URL = "https://apis.data.go.kr/1051000/recruitment/list"
+
+# 전수 조회 후 이 중 하나라도 제목에 있으면 수집 (최종 품질 필터는 export_json.py가 담당)
+ALIO_API_TITLE_KW = [
+    "강사", "멘토", "코치", "튜터", "교관", "특강", "강의", "지도사",
+    "AI", "인공지능", "디지털", "코딩", "소프트웨어", "SW",
+    "미디어", "영상", "콘텐츠", "배움터", "에듀테크",
+]
+
+
+def _load_data_go_kr_key() -> str:
+    """환경변수 → 프로젝트 루트 .env 순으로 API 키를 찾는다."""
+    key = os.environ.get("DATA_GO_KR_API_KEY", "")
+    if key:
+        return key
+    env_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"
+    )
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("DATA_GO_KR_API_KEY="):
+                    return line.strip().split("=", 1)[1]
+    except FileNotFoundError:
+        pass
+    return ""
+
+
+def _norm_ymd(raw: str) -> str:
+    """'20260608' / '2026-06-08' / '2026.06.08' → '2026-06-08'"""
+    if not raw:
+        return ""
+    m = re.search(r"(20\d{2})[.\-/]?(\d{2})[.\-/]?(\d{2})", str(raw))
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else ""
+
+
+def crawl_alio_api(max_pages: int = 30) -> list[JobPosting]:
+    """공공기관 채용정보 조회서비스 API — 진행중(ongoingYn=Y) 공고 전수 조회.
+
+    키가 없거나 401(키 미반영)이면 빈 리스트를 반환하고,
+    호출부(export_json)가 HTML 크롤러로 폴백한다.
+    """
+    key = _load_data_go_kr_key()
+    if not key:
+        print("  잡알리오API: DATA_GO_KR_API_KEY 없음 — 건너뜀")
+        return []
+
+    results: list[JobPosting] = []
+    seen_sn: set = set()
+
+    for page in range(1, max_pages + 1):
+        # 키 전파 중 게이트웨이 노드별로 401이 간헐 발생 → 페이지당 최대 5회 재시도
+        resp = None
+        for attempt in range(5):
+            try:
+                resp = httpx.get(ALIO_API_URL, params={
+                    "serviceKey": key,
+                    "numOfRows": 100,
+                    "pageNo": page,
+                    "ongoingYn": "Y",
+                    "resultType": "json",
+                }, timeout=15)
+            except Exception as e:
+                print(f"  잡알리오API p{page} 오류: {e}")
+                resp = None
+                break
+            if resp.status_code != 401:
+                break
+            time.sleep(2)
+
+        if resp is None:
+            break
+        if resp.status_code == 401:
+            print("  잡알리오API: 401 지속 (키 미반영 또는 무효) — 건너뜀")
+            return []
+        if resp.status_code != 200:
+            print(f"  잡알리오API p{page}: HTTP {resp.status_code} — 중단")
+            break
+
+        try:
+            data = resp.json()
+        except Exception:
+            print(f"  잡알리오API p{page}: JSON 파싱 실패 — 중단")
+            break
+
+        items = data.get("result") or []
+        if not items:
+            break
+
+        for it in items:
+            sn = it.get("recrutPblntSn")
+            if sn in seen_sn:
+                continue
+            seen_sn.add(sn)
+
+            title = (it.get("recrutPbancTtl") or "").strip()
+            if not title or not any(kw in title for kw in ALIO_API_TITLE_KW):
+                continue
+
+            org_name = (it.get("instNm") or "").strip()
+            deadline = _norm_ymd(it.get("pbancEndYmd", ""))
+            posted = _norm_ymd(it.get("pbancBgngYmd", ""))
+
+            region = ""
+            region_text = it.get("workRgnNmLst") or ""
+            for r in ["서울", "경기", "인천", "부산", "대구", "광주", "대전", "세종",
+                       "울산", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]:
+                if r in region_text:
+                    region = r
+                    break
+
+            detail_url = (it.get("srcUrl") or "").strip()
+            if not detail_url and sn:
+                detail_url = f"https://job.alio.go.kr/recruitview.do?pblntSn={sn}"
+
+            org_type, org_sub = _classify_alio_org(org_name)
+
+            results.append(JobPosting(
+                title=title, organization=org_name,
+                org_type=org_type, org_sub_type=org_sub,
+                region=region,
+                deadline_text=deadline,
+                published_at=posted,
+                source_url=detail_url,
+                source_name="잡알리오",
+                apply_url=detail_url,
+            ))
+
+        total = data.get("totalCount", 0)
+        print(f"  잡알리오API p{page}: 누적 {len(results)}건 (전체 {total}건 중)")
+        if page * 100 >= int(total or 0):
+            break
+        time.sleep(0.3)
+
+    return results
+
+
+# ─────────────────────────────────────────────
 # 1-2. 한국청소년활동진흥원 (kywa.or.kr) — 청소년센터/수련관 채용
 # ─────────────────────────────────────────────
 def crawl_kywa(pages: int = 3) -> list[JobPosting]:

@@ -27,7 +27,7 @@ PUB_STATS = PROJECT_ROOT / "public" / "data" / "stats.json"
 BACKUP_BASE = PROJECT_ROOT / "backups" / "crawls"
 LOG_DIR = PROJECT_ROOT / "logs" / "crawls"
 
-TIMEOUT_SEC = 600
+TIMEOUT_SEC = 720
 # 이전 대비 이 비율 이하로 떨어지면 경고 (50%)
 DROP_THRESHOLD = 0.5
 # 소스별 이전 건수 대비 이 이하면 경고 (0건)
